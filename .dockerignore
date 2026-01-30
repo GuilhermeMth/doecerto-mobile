@@ -1,0 +1,82 @@
+# ==================== VARIÁVEIS DE AMBIENTE ====================
+# Arquivos .env são ignorados - variáveis devem ser injetadas em runtime
+.env
+.env.*
+!.env.example
+
+# ==================== DEPENDÊNCIAS ====================
+node_modules
+npm-debug.log
+yarn-error.log
+pnpm-debug.log
+# package-lock.json - NECESSÁRIO para npm ci (não ignorar!)
+yarn.lock
+pnpm-lock.yaml
+
+# ==================== BUILD ====================
+dist
+build
+.next
+out
+
+# ==================== TESTES ====================
+coverage
+*.test.ts
+*.spec.ts
+test
+__tests__
+
+# ==================== DESENVOLVIMENTO ====================
+# Não incluir .env na imagem - variáveis são injetadas em runtime pelo orquestrador
+
+# ==================== IDE ====================
+.vscode
+.idea
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ==================== GIT ====================
+.git
+.gitignore
+.gitattributes
+.github
+
+# ==================== CI/CD ====================
+.gitlab-ci.yml
+.github/workflows
+
+# ==================== DOCUMENTAÇÃO ====================
+*.md
+docs
+CHANGELOG.md
+LICENSE
+# Arquivos de documentação não são necessários na imagem
+*.md
+!README.md
+docs
+CHANGELOG.md
+LICENSE
+
+# ==================== DOCKER ====================
+# Arquivos docker não são necessários dentro da imagem
+Dockerfile*
+prisma/dev.db-journal
+prisma/migrations/*.sql
+
+# ==================== UPLOADS ====================
+uploads
+logs
+
+# ==================== NODE ====================
+.npm
+.node-gyp
+.yarn-cache
+
+# ==================== MISC ====================
+*.log
+.cache
+.temp
+tmp

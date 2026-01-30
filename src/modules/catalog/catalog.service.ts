@@ -3,17 +3,24 @@ import { PrismaService } from 'src/prisma/prisma.service';
 import { GetCatalogDto } from './dto/get-catalog.dto';
 import { CatalogSectionDto, NgoItemDto } from './dto/catalog-response.dto';
 import { sortCatalogItems } from 'src/common/utils/sorting.util';
+import { CACHE_MANAGER, Cache } from '@nestjs/cache-manager';
+import { Inject } from '@nestjs/common';
 
 @Injectable()
 export class CatalogService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Inject(CACHE_MANAGER) private cacheManager: Cache,
+  ) {}
 
   /**
    * Método principal que orquestra as diferentes seções do catálogo
    * Se houver searchTerm, retorna uma única lista filtrada
    * Caso contrário, retorna 4 listas com ordenações diferentes
    */
-  async getCatalog(filters: GetCatalogDto): Promise<CatalogSectionDto[] | CatalogSectionDto> {
+  async getCatalog(
+    filters: GetCatalogDto,
+  ): Promise<CatalogSectionDto[] | CatalogSectionDto> {
     // Se houver termo de pesquisa, retorna uma única lista filtrada
     if (filters.searchTerm && filters.searchTerm.trim()) {
       const searchResults = await this.searchCatalog(filters);
@@ -24,7 +31,22 @@ export class CatalogService {
       };
     }
 
-    // Caso contrário, executa todas as queries em paralelo para não bloquear o event loop
+    const categoryKey = filters.categoryIds?.length
+      ? `_cat_${filters.categoryIds.join(',')}`
+      : '_all';
+    const cacheKey = `catalog_home${categoryKey}`;
+
+    try {
+      const cachedData =
+        await this.cacheManager.get<CatalogSectionDto[]>(cacheKey);
+      if (cachedData) {
+        return cachedData;
+      }
+    } catch (error) {
+      console.error(`[CACHE ERROR] ⚠️ Erro ao acessar cache:`, error);
+    }
+
+    // Executa todas as queries em paralelo para não bloquear o event loop
     const [topRated, newest, topFavored, oldest] = await Promise.all([
       this.getTopRated(filters),
       this.getNewest(filters),
@@ -32,12 +54,20 @@ export class CatalogService {
       this.getOldest(filters),
     ]);
 
-    return [
+    const result: CatalogSectionDto[] = [
       { title: 'Melhor Avaliadas', type: 'topRated', data: topRated },
       { title: 'Mais Recentes', type: 'newest', data: newest },
       { title: 'Mais Favoritas', type: 'topFavored', data: topFavored },
       { title: 'Mais Antigas', type: 'oldest', data: oldest },
     ];
+
+    try {
+      await this.cacheManager.set(cacheKey, result, 30000);
+    } catch (error) {
+      console.error(`[CACHE ERROR] ⚠️ Erro ao salvar em cache:`, error);
+    }
+
+    return result;
   }
 
   // --- MÉTODOS DE ACESSO PÚBLICO PARA SEÇÕES ESPECÍFICAS ---
@@ -139,7 +169,6 @@ export class CatalogService {
     }
 
     // 2. Busca no Prisma
-    // Se houver filtros de categorias, buscamos amostra maior para re-ranquear no código
     const shouldFetchMore = categoryIds && categoryIds.length > 0;
     const fetchLimit = shouldFetchMore ? Math.max(take * 5, 50) : take;
 
@@ -155,9 +184,8 @@ export class CatalogService {
       },
       orderBy: [
         { [orderByField]: orderByDirection },
-        { userId: 'asc' }, // Desempate determinístico usando PK
+        { userId: 'asc' },
       ],
-      // Paginação no DB apenas se não houver ranking de match
       skip: shouldFetchMore ? 0 : skip,
       take: fetchLimit,
     });
@@ -167,7 +195,11 @@ export class CatalogService {
 
     // 4. Re-ordenação por Prioridade + Paginação Manual (Se houver filtro)
     if (shouldFetchMore) {
-      mappedResults = sortCatalogItems(mappedResults, orderByField, orderByDirection);
+      mappedResults = sortCatalogItems(
+        mappedResults,
+        orderByField,
+        orderByDirection,
+      );
       mappedResults = mappedResults.slice(skip, skip + take);
     }
 
@@ -179,8 +211,7 @@ export class CatalogService {
    */
   private mapToDto(ong: any, filterCategoryIds?: number[]): NgoItemDto {
     const categories = ong.profile?.categories || [];
-    
-    // Calcula quantos IDs batem com o filtro para o ranking
+
     const matchCount = filterCategoryIds?.length
       ? categories.filter((c) => filterCategoryIds.includes(c.id)).length
       : 0;
