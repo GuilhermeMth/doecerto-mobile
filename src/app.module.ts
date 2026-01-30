@@ -15,9 +15,22 @@ import { DonorProfileModule } from './modules/donor-profiles/donor-profiles.modu
 import { RatingsModule } from './modules/ratings/ratings.module';
 import { CatalogModule } from './modules/catalog/catalog.module';
 import { CategoriesModule } from './modules/categories/categories.module';
+import { CacheModule } from '@nestjs/cache-manager';
+import KeyvRedis from '@keyv/redis';
 
 @Module({
   imports: [
+    CacheModule.registerAsync({
+      isGlobal: true,
+      useFactory: async () => {
+        return {
+          stores: [
+            new KeyvRedis(process.env.REDIS_URL),
+          ],
+          ttl: 30000, // TTL padrão de 30 segundos
+        };
+      },
+    }),
     ConfigModule.forRoot({ isGlobal: true }),
     PrismaModule,
     UsersModule,
@@ -25,7 +38,7 @@ import { CategoriesModule } from './modules/categories/categories.module';
     OngsModule,
     AuthModule,
     AdminsModule,
-    DonationsModule, 
+    DonationsModule,
     WhishlistItemModule,
     OngProfilesModule,
     DonorProfileModule,
