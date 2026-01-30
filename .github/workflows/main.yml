@@ -41,13 +41,33 @@ jobs:
             type=semver,pattern={{major}}
             type=sha,prefix={{branch}}-
             type=raw,value=latest,enable={{is_default_branch}}
-      
-      - name: Run tests
+
+      - name: Build Docker image for testing
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          load: true
+          tags: test-image:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Run health check tests
         run: |
-          docker build -t test-image .
-          docker run -d -p 3000:3000 --name test-container test-image
-          sleep 10
-          curl -f http://localhost:3000/ || exit 1
+          docker run -d -p 3000:3000 --name test-container test-image:latest
+          echo "Waiting for service to be healthy..."
+          for i in {1..30}; do
+            if curl -f http://localhost:3000/health; then
+              echo "✓ Health check passed!"
+              docker stop test-container
+              exit 0
+            fi
+            echo "Attempt $i/30... waiting..."
+            sleep 2
+          done
+          echo "✗ Health check failed!"
+          docker logs test-container
+          docker stop test-container
+          exit 1
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
@@ -60,5 +80,5 @@ jobs:
           cache-to: type=gha,mode=max
           platforms: linux/amd64
 
-      - name: Image digest
-        run: echo "${{ steps.meta.outputs.tags }}"
+      - name: Log image digest
+        run: echo "Image pushed successfully with tags ${{ steps.meta.outputs.tags }}"
